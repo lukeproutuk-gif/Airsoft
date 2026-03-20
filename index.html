@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Airsoft GBB Ballistics Sim</title>
+<style>
+:root {
+  --bg:#0a0c14; --panel:#12162a; --border:#00c878; --bdim:#004d30;
+  --text:#00ffa0; --tdim:#007a50; --lbl:#b4dcff; --wht:#e6f0ff;
+  --yel:#ffc828; --err:#ff4444; --fire:#ff5000; --firehov:#ff8020;
+  --ftxt:#ffffc8; --rst:#1e3c5a; --rsthov:#2a5080;
+  --ibg:#080e1c; --ibrd:#006050; --iact:#00c878;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);font-family:'Courier New',Courier,monospace;font-size:13px;min-height:100vh}
+.app{max-width:1200px;margin:0 auto;padding:6px}
+header{text-align:center;padding:8px 0 6px;border-bottom:1px solid var(--bdim);margin-bottom:8px}
+header h1{font-size:clamp(14px,3vw,20px);letter-spacing:2px;color:var(--border);text-shadow:0 0 12px #00c87888}
+header p{color:var(--tdim);font-size:11px;margin-top:2px}
+.layout{display:grid;grid-template-columns:270px 1fr;gap:8px}
+@media(max-width:700px){.layout{grid-template-columns:1fr}}
+
+/* ── Left panel ── */
+.params{background:var(--panel);border:1px solid var(--bdim);border-radius:4px;padding:8px;display:flex;flex-direction:column;gap:6px}
+.sec-title{color:var(--bdim);font-size:11px;border-bottom:1px solid var(--bdim);padding-bottom:2px;margin-top:4px}
+.field{display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px;min-height:30px}
+.field label{color:var(--lbl);font-size:12px}
+.field-right{display:flex;align-items:center;gap:3px}
+.field input[type=number]{width:72px;background:var(--ibg);color:var(--wht);border:1px solid var(--ibrd);border-radius:3px;padding:4px 5px;font-family:inherit;font-size:12px;-moz-appearance:textfield}
+.field input[type=number]:focus{outline:none;border-color:var(--iact);box-shadow:0 0 6px #00c87844}
+.field input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
+.field span.unit{color:var(--tdim);font-size:10px;min-width:24px}
+.toggle-wrap{display:flex;align-items:center;gap:6px}
+.toggle{appearance:none;width:38px;height:20px;background:#1a2a1a;border:1px solid var(--ibrd);border-radius:10px;cursor:pointer;position:relative;transition:background .2s}
+.toggle:checked{background:#004d30;border-color:var(--border)}
+.toggle::after{content:'';position:absolute;width:14px;height:14px;background:#888;border-radius:50%;top:2px;left:2px;transition:.2s}
+.toggle:checked::after{left:20px;background:var(--border)}
+.toggle-lbl{color:var(--lbl);font-size:12px}
+
+.muzzle-box{background:var(--ibg);border:1px solid var(--bdim);border-radius:3px;padding:8px;text-align:center;margin-top:4px}
+.muzzle-box .fps{font-size:22px;color:var(--yel);letter-spacing:1px}
+.muzzle-box .sub{font-size:11px;color:var(--text);margin-top:2px}
+.muzzle-box .rpm{font-size:11px;color:var(--tdim);margin-top:1px}
+
+.btn-row{display:flex;gap:8px;margin-top:6px}
+.btn{flex:1;padding:12px 6px;border:none;border-radius:5px;font-family:inherit;font-size:15px;font-weight:bold;cursor:pointer;letter-spacing:1px;transition:background .15s,transform .1s}
+.btn:active{transform:scale(.97)}
+.btn-fire{background:var(--fire);color:var(--ftxt);box-shadow:0 0 12px #ff500066}
+.btn-fire:hover{background:var(--firehov)}
+.btn-rst{background:var(--rst);color:var(--lbl)}
+.btn-rst:hover{background:var(--rsthov)}
+
+/* ── Right panel ── */
+.sim{display:flex;flex-direction:column;gap:8px}
+.canvas-wrap{position:relative;background:var(--panel);border:2px solid var(--bdim);border-radius:4px;overflow:hidden}
+#anim{display:block;width:100%;height:auto}
+.canvas-hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--tdim);font-size:13px;pointer-events:none;text-align:center;line-height:1.8}
+
+.stats-bar{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;background:var(--panel);border:1px solid var(--bdim);border-radius:4px;padding:8px}
+@media(max-width:700px){.stats-bar{grid-template-columns:repeat(3,1fr)}}
+.stat{text-align:center}
+.stat .slbl{font-size:10px;color:var(--tdim)}
+.stat .sval{font-size:12px;color:var(--text);margin-top:1px}
+
+.progress-bar{height:4px;background:#1a2a1a;border-radius:2px;overflow:hidden}
+.progress-fill{height:100%;background:var(--border);border-radius:2px;width:0%;transition:width .05s}
+
+.graphs{display:flex;flex-direction:column;gap:8px}
+.graph-box{background:var(--panel);border:1px solid var(--bdim);border-radius:4px;overflow:hidden}
+.graph-box canvas{display:block;width:100%;height:auto}
+.graph-title{font-size:11px;color:var(--tdim);padding:5px 8px 2px;border-bottom:1px solid var(--bdim)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>⬡ AIRSOFT GBB BALLISTICS SIMULATOR</h1>
+    <p>GAS BLOW BACK · 6mm BB · REAL-TIME PHYSICS</p>
+  </header>
+
+  <div class="layout">
+    <!-- Parameters -->
+    <div class="params">
+      <div class="sec-title">── GUN ───────────────────</div>
+
+      <div class="field"><label>Barrel Length</label><div class="field-right"><input type="number" id="barrel_mm" value="300" min="100" max="650" step="1"><span class="unit">mm</span></div></div>
+      <div class="field"><label>Bore Diameter</label><div class="field-right"><input type="number" id="bore_mm" value="6.04" min="6.00" max="6.20" step="0.01"><span class="unit">mm</span></div></div>
+      <div class="field"><label>Chamber Volume</label><div class="field-right"><input type="number" id="chamber_cc" value="2.5" min="1" max="10" step="0.1"><span class="unit">cc</span></div></div>
+      <div class="field"><label>Gas Pressure</label><div class="field-right"><input type="number" id="pressure" value="120" min="50" max="300" step="1"><span class="unit">psi</span></div></div>
+
+      <div class="sec-title">── HOP-UP ─────────────────</div>
+
+      <div class="field"><label>Hop-Up Active</label>
+        <div class="toggle-wrap"><input type="checkbox" class="toggle" id="hop_active" checked><span class="toggle-lbl" id="hop_lbl">ON</span></div>
+      </div>
+      <div class="field"><label>Rubber Hardness</label><div class="field-right"><input type="number" id="hardness" value="60" min="40" max="80" step="1"><span class="unit">ShA</span></div></div>
+      <div class="field"><label>Bucking Pressure</label><div class="field-right"><input type="number" id="bk_press" value="150" min="50" max="500" step="5"><span class="unit">gf</span></div></div>
+
+      <div class="sec-title">── BB (6mm) ───────────────</div>
+
+      <div class="field"><label>BB Mass</label><div class="field-right"><input type="number" id="mass_g" value="0.20" min="0.12" max="0.50" step="0.01"><span class="unit">g</span></div></div>
+      <div class="field"><label>Surface Polish</label><div class="field-right"><input type="number" id="polish" value="0.90" min="0" max="1" step="0.05"><span class="unit">0-1</span></div></div>
+
+      <div class="sec-title">── LAUNCH ─────────────────</div>
+
+      <div class="field"><label>Launch Angle</label><div class="field-right"><input type="number" id="angle" value="0" min="-10" max="30" step="0.5"><span class="unit">°</span></div></div>
+
+      <div class="sec-title">── ENVIRONMENT ────────────</div>
+
+      <div class="field"><label>Temperature</label><div class="field-right"><input type="number" id="temp_c" value="15" min="-20" max="50" step="1"><span class="unit">°C</span></div></div>
+      <div class="field"><label>Altitude</label><div class="field-right"><input type="number" id="altitude" value="0" min="0" max="4000" step="10"><span class="unit">m</span></div></div>
+      <div class="field"><label>Wind Speed</label><div class="field-right"><input type="number" id="wind_ms" value="0" min="0" max="20" step="0.5"><span class="unit">m/s</span></div></div>
+      <div class="field"><label>Wind Dir</label><div class="field-right"><input type="number" id="wind_dir" value="0" min="0" max="360" step="5"><span class="unit">°</span></div></div>
+
+      <div class="muzzle-box">
+        <div class="fps" id="m_fps">– FPS</div>
+        <div class="sub" id="m_ms">– m/s &nbsp;|&nbsp; – J</div>
+        <div class="rpm" id="m_rpm">– RPM</div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-fire" id="btn_fire">▶ FIRE!</button>
+        <button class="btn btn-rst"  id="btn_rst">■ RESET</button>
+      </div>
+    </div>
+
+    <!-- Simulation + graphs -->
+    <div class="sim">
+      <div class="canvas-wrap">
+        <canvas id="anim" width="800" height="320"></canvas>
+        <div class="canvas-hint" id="hint">CONFIGURE PARAMS &amp; PRESS FIRE</div>
+      </div>
+
+      <div class="stats-bar">
+        <div class="stat"><div class="slbl">SPEED</div><div class="sval" id="s_speed">–</div></div>
+        <div class="stat"><div class="slbl">FPS</div><div class="sval" id="s_fps">–</div></div>
+        <div class="stat"><div class="slbl">RANGE</div><div class="sval" id="s_range">–</div></div>
+        <div class="stat"><div class="slbl">HEIGHT</div><div class="sval" id="s_height">–</div></div>
+        <div class="stat"><div class="slbl">ENERGY</div><div class="sval" id="s_ke">–</div></div>
+        <div class="stat"><div class="slbl">TIME</div><div class="sval" id="s_time">–</div></div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="prog"></div></div>
+
+      <div class="graphs">
+        <div class="graph-box"><div class="graph-title">FLIGHT PATH — Height vs Range</div><canvas id="g_path" width="800" height="180"></canvas></div>
+        <div class="graph-box"><div class="graph-title">SPEED — m/s vs Range</div><canvas id="g_speed" width="800" height="180"></canvas></div>
+        <div class="graph-box"><div class="graph-title">KINETIC ENERGY — Joules vs Range</div><canvas id="g_energy" width="800" height="180"></canvas></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Physics constants ────────────────────────────────────────────────────────
+const BB_R   = 0.003;
+const RHO0   = 1.225;
+const G      = 9.80665;
+const MU_AIR = 1.81e-5;
+const PSI2PA = 6894.757;
+const GAMMA  = 1.4;
+
+// ─── Physics ──────────────────────────────────────────────────────────────────
+function airDensity(alt, tempC) {
+  const T = tempC + 273.15;
+  const p = 101325 * Math.pow(1 - 2.2557e-5 * alt, 5.2559);
+  return p / (287.058 * T);
+}
+
+function simulateBarrel(p) {
+  const barrelM  = p.barrel_mm / 1000;
+  const boreR    = (p.bore_mm / 2) / 1000;
+  const boreA    = Math.PI * boreR * boreR;
+  const bbA      = Math.PI * BB_R * BB_R;
+  const leak     = Math.max(0, 1 - bbA / boreA);
+  const pInit    = p.pressure * PSI2PA;
+  const pAtm     = 14.696 * PSI2PA;
+  const V0       = p.chamber_cc * 1e-6;
+  const mu       = 0.15 * (1 - p.polish * 0.7);
+  const massKg   = p.mass_g / 1000;
+
+  let hopMu = 0;
+  if (p.hop_active) {
+    const hn   = (p.hardness - 40) / 40;
+    const grip = (1 - hn * 0.5) * (p.bk_press / 200);
+    hopMu = Math.max(0, Math.min(grip, 0.8));
+  }
+
+  const dt = 1e-6;
+  let x = 0, v = 0;
+  while (x < barrelM) {
+    const Vg   = V0 + boreA * x;
+    const pGas = pInit * Math.pow(V0 / Vg, GAMMA);
+    const pNet = Math.max(pGas - pAtm, 0);
+    const Fnet = pNet * bbA * (1 - leak * 0.3) - mu * pNet * bbA;
+    v += (Fnet / massKg) * dt;
+    x += v * dt;
+    if (v < 0) { v = 0; break; }
+  }
+
+  const mv = v;
+  const cDist = 0.005;
+  const cTime = cDist / Math.max(mv, 1);
+  const Fhop  = (p.bk_press / 1000) * G;
+  const torq  = hopMu * Fhop * BB_R;
+  const Ibb   = 0.4 * massKg * BB_R * BB_R;
+  let omega   = (torq / Ibb) * cTime;
+  omega = Math.min(omega, mv / BB_R * 0.8);
+
+  return { mv, spinRps: omega / (2 * Math.PI) };
+}
+
+function dragCd(Re, polish) {
+  let cd = Re < 1e3 ? (Re > 0 ? 24 / Re : 1) : Re < 2e5 ? 0.44 : 0.1;
+  return cd * (1 - polish * 0.06);
+}
+
+function simulateFlight(mv, spinRps, p) {
+  const massKg = p.mass_g / 1000;
+  const rho    = airDensity(p.altitude, p.temp_c);
+  const area   = Math.PI * BB_R * BB_R;
+  const ang    = p.angle * Math.PI / 180;
+  const wRad   = p.wind_dir * Math.PI / 180;
+  const wvx    = -p.wind_ms * Math.cos(wRad);
+  const Ibb    = 0.4 * massKg * BB_R * BB_R;
+
+  let vx = mv * Math.cos(ang);
+  let vy = mv * Math.sin(ang);
+  let x  = 0, y = 1.5;
+  let t  = 0;
+  let omega = spinRps * 2 * Math.PI;
+
+  const dt  = 0.0005;
+  const pts = [];
+
+  while (t < 5 && y >= 0) {
+    const vrx = vx - wvx, vry = vy;
+    const vr  = Math.sqrt(vrx*vrx + vry*vry);
+    if (vr < 0.01) break;
+
+    const Re = rho * vr * 2 * BB_R / MU_AIR;
+    const cd = dragCd(Re, p.polish);
+    const Fd = 0.5 * rho * vr * vr * cd * area;
+    const Fdx = -Fd * vrx / vr;
+    const Fdy = -Fd * vry / vr;
+
+    let Fmx = 0, Fmy = 0;
+    if (vr > 0.1) {
+      const cl = Math.min(0.5 * BB_R * Math.abs(omega) / vr, 0.5);
+      const Fm = 0.5 * rho * vr * vr * cl * area;
+      Fmx =  Fm *  vry / vr;
+      Fmy =  Fm * -vrx / vr * Math.sign(omega);
+    }
+
+    vx += (Fdx + Fmx) / massKg * dt;
+    vy += (Fdy + Fmy - massKg * G) / massKg * dt;
+    x  += vx * dt;
+    y  += vy * dt;
+
+    const sdrag = 0.5 * rho * area * BB_R * omega;
+    omega -= (sdrag / Ibb) * dt * Math.sign(omega);
+
+    t += dt;
+    pts.push({
+      t: +t.toFixed(4),
+      x: +x.toFixed(3),
+      y: +y.toFixed(3),
+      speed: +Math.sqrt(vx*vx+vy*vy).toFixed(3),
+      spinRps: +(omega / (2*Math.PI)).toFixed(1)
+    });
+  }
+  return pts;
+}
+
+// ─── Drawing ──────────────────────────────────────────────────────────────────
+const COLS = {
+  sky1:'#0a1228', sky2:'#162040', ground:'#1e4a28', grass:'#2d7a3a',
+  ghost:'#004d30', path:'#00c878', dot:'#ffc828', dotHi:'#ffffff',
+  grid:'#1a2a3a', axis:'#334455', txtDim:'#007a50', txt:'#00ffa0'
+};
+
+function drawAnim(canvas, traj, idx) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  // Sky gradient
+  const grad = ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0, COLS.sky1);
+  grad.addColorStop(1, COLS.sky2);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W,H);
+
+  const PAD = 28, GY = H - 30;
+
+  // Ground
+  ctx.fillStyle = COLS.ground;
+  ctx.fillRect(0, GY, W, H - GY);
+
+  // Grass tufts
+  ctx.strokeStyle = COLS.grass;
+  ctx.lineWidth = 1;
+  for (let gx = 8; gx < W; gx += 12) {
+    ctx.beginPath(); ctx.moveTo(gx, GY); ctx.lineTo(gx-2, GY-5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gx, GY); ctx.lineTo(gx+2, GY-5); ctx.stroke();
+  }
+
+  // Scanlines
+  ctx.fillStyle = 'rgba(0,0,0,0.08)';
+  for (let sy = 0; sy < H; sy += 3) ctx.fillRect(0, sy, W, 1);
+
+  if (!traj || !traj.length) return;
+
+  const maxX = traj[traj.length-1].x || 1;
+  const maxY = Math.max(...traj.map(p=>p.y), 2);
+
+  function toC(pt) {
+    return [
+      PAD + (pt.x / maxX) * (W - PAD*2),
+      GY  - (pt.y / (maxY + 0.5)) * (GY - PAD)
+    ];
+  }
+
+  // Ghost path
+  ctx.strokeStyle = COLS.ghost;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  traj.forEach((pt,i) => { const [cx,cy]=toC(pt); i?ctx.lineTo(cx,cy):ctx.moveTo(cx,cy); });
+  ctx.stroke();
+
+  // Live path
+  if (idx > 0) {
+    ctx.strokeStyle = COLS.path;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#00c87866'; ctx.shadowBlur = 6;
+    ctx.beginPath();
+    for (let i = 0; i <= idx && i < traj.length; i++) {
+      const [cx,cy] = toC(traj[i]);
+      i ? ctx.lineTo(cx,cy) : ctx.moveTo(cx,cy);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // BB dot
+  const ci = Math.min(idx, traj.length-1);
+  if (ci >= 0) {
+    const [bx,by] = toC(traj[ci]);
+    ctx.beginPath(); ctx.arc(bx,by,9,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,200,0,0.15)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(bx,by,5,0,Math.PI*2);
+    ctx.fillStyle=COLS.dot; ctx.fill();
+    ctx.beginPath(); ctx.arc(bx,by,2,0,Math.PI*2);
+    ctx.fillStyle=COLS.dotHi; ctx.fill();
+  }
+
+  // Range markers
+  ctx.fillStyle = COLS.txtDim;
+  ctx.font = '10px Courier New';
+  ctx.textAlign = 'center';
+  [0, 0.25, 0.5, 0.75, 1].forEach(f => {
+    const mx = maxX * f;
+    const [px] = toC({x:mx,y:0});
+    ctx.fillStyle='#334455';
+    ctx.fillRect(px-0.5, GY, 1, 5);
+    ctx.fillStyle=COLS.txtDim;
+    ctx.fillText(mx.toFixed(0)+'m', px, GY+14);
+  });
+}
+
+function drawGraph(canvas, traj, type, massKg) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#0d1220';
+  ctx.fillRect(0,0,W,H);
+
+  if (!traj || !traj.length) return;
+
+  const PAD = {l:46, r:14, t:14, b:24};
+  const pw = W - PAD.l - PAD.r;
+  const ph = H - PAD.t - PAD.b;
+
+  const xs = traj.map(p=>p.x);
+  const ys = traj.map(p =>
+    type==='height' ? p.y :
+    type==='speed'  ? p.speed :
+    0.5 * massKg * p.speed * p.speed
+  );
+
+  const xMax = Math.max(...xs, 1);
+  const yMax = Math.max(...ys, 0.01);
+  const yMin = type==='height' ? 0 : 0;
+
+  function cx(x) { return PAD.l + (x/xMax)*pw; }
+  function cy(y) { return PAD.t + ph - ((y-yMin)/(yMax-yMin||1))*ph; }
+
+  // Grid
+  ctx.strokeStyle = COLS.grid;
+  ctx.lineWidth = 0.5;
+  const yTicks = 4;
+  for (let i=0; i<=yTicks; i++) {
+    const yv = yMin + (yMax-yMin)*i/yTicks;
+    const pyv = cy(yv);
+    ctx.beginPath(); ctx.moveTo(PAD.l, pyv); ctx.lineTo(PAD.l+pw, pyv); ctx.stroke();
+    ctx.fillStyle = COLS.txtDim;
+    ctx.font = '9px Courier New';
+    ctx.textAlign = 'right';
+    const lbl = type==='height' ? yv.toFixed(2)+'m'
+              : type==='speed'  ? yv.toFixed(1)+' m/s'
+              : yv.toFixed(3)+'J';
+    ctx.fillText(lbl, PAD.l-3, pyv+3);
+  }
+
+  // X axis labels
+  ctx.textAlign = 'center';
+  [0,0.25,0.5,0.75,1].forEach(f => {
+    const xv = xMax*f;
+    ctx.fillStyle=COLS.txtDim;
+    ctx.fillText(xv.toFixed(0)+'m', cx(xv), H-PAD.b+12);
+    ctx.strokeStyle=COLS.grid;
+    ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(cx(xv),PAD.t); ctx.lineTo(cx(xv),PAD.t+ph); ctx.stroke();
+  });
+
+  // Data line
+  const lineColor = type==='height'?'#00c878': type==='speed'?'#00aaff':'#ffc828';
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = lineColor+'88'; ctx.shadowBlur = 5;
+  ctx.beginPath();
+  traj.forEach((pt,i) => {
+    const y = type==='height'?pt.y:type==='speed'?pt.speed:0.5*massKg*pt.speed*pt.speed;
+    i ? ctx.lineTo(cx(pt.x), cy(y)) : ctx.moveTo(cx(pt.x), cy(y));
+  });
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Axes
+  ctx.strokeStyle = COLS.axis;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(PAD.l, PAD.t, pw, ph);
+}
+
+// ─── App state ────────────────────────────────────────────────────────────────
+let traj = [], massKg = 0.0002;
+let playing = false, animIdx = 0, animSimTime = 0, lastRaf = null;
+
+function getParams() {
+  const v = id => parseFloat(document.getElementById(id).value);
+  return {
+    barrel_mm: v('barrel_mm'), bore_mm: v('bore_mm'),
+    chamber_cc: v('chamber_cc'), pressure: v('pressure'),
+    hop_active: document.getElementById('hop_active').checked,
+    hardness: v('hardness'), bk_press: v('bk_press'),
+    mass_g: v('mass_g'), polish: v('polish'),
+    angle: v('angle'),
+    temp_c: v('temp_c'), altitude: v('altitude'),
+    wind_ms: v('wind_ms'), wind_dir: v('wind_dir'),
+  };
+}
+
+function runSim() {
+  const p = getParams();
+  massKg = p.mass_g / 1000;
+  const { mv, spinRps } = simulateBarrel(p);
+  traj = simulateFlight(mv, spinRps, p);
+
+  const fps = mv * 3.28084;
+  const ke  = 0.5 * massKg * mv * mv;
+  document.getElementById('m_fps').textContent = fps.toFixed(0) + ' FPS';
+  document.getElementById('m_ms').textContent  = mv.toFixed(1) + ' m/s  |  ' + ke.toFixed(3) + ' J';
+  document.getElementById('m_rpm').textContent  = (spinRps*60).toFixed(0) + ' RPM  backspin';
+
+  drawGraphs();
+  return { mv, spinRps };
+}
+
+function drawGraphs() {
+  drawGraph(document.getElementById('g_path'),   traj, 'height', massKg);
+  drawGraph(document.getElementById('g_speed'),  traj, 'speed',  massKg);
+  drawGraph(document.getElementById('g_energy'), traj, 'energy', massKg);
+}
+
+function updateStats(idx) {
+  if (!traj.length) return;
+  const pt = traj[Math.min(idx, traj.length-1)];
+  const ke = 0.5 * massKg * pt.speed * pt.speed;
+  document.getElementById('s_speed').textContent  = pt.speed.toFixed(1) + ' m/s';
+  document.getElementById('s_fps').textContent    = (pt.speed*3.28084).toFixed(0);
+  document.getElementById('s_range').textContent  = pt.x.toFixed(1) + ' m';
+  document.getElementById('s_height').textContent = pt.y.toFixed(2) + ' m';
+  document.getElementById('s_ke').textContent     = ke.toFixed(4) + ' J';
+  document.getElementById('s_time').textContent   = pt.t.toFixed(3) + ' s';
+  document.getElementById('prog').style.width     = (idx/Math.max(traj.length-1,1)*100).toFixed(1)+'%';
+}
+
+const animCanvas = document.getElementById('anim');
+
+function animLoop(ts) {
+  if (!playing) return;
+  if (!lastRaf) lastRaf = ts;
+  const elapsed = (ts - lastRaf) / 1000;
+  lastRaf = ts;
+
+  animSimTime += elapsed * 1.5;  // 1.5x speed
+
+  while (animIdx < traj.length-1 && traj[animIdx].t < animSimTime) animIdx++;
+
+  drawAnim(animCanvas, traj, animIdx);
+  updateStats(animIdx);
+
+  if (animIdx >= traj.length-1) {
+    playing = false;
+    document.getElementById('btn_fire').textContent = '▶ REPLAY';
+    return;
+  }
+  requestAnimationFrame(animLoop);
+}
+
+function onFire() {
+  const btn = document.getElementById('btn_fire');
+  if (playing) {
+    playing = false;
+    btn.textContent = '▶ FIRE!';
+    return;
+  }
+  if (animIdx >= traj.length-1) {
+    runSim();
+    animIdx = 0; animSimTime = 0; lastRaf = null;
+  }
+  document.getElementById('hint').style.display='none';
+  playing = true;
+  btn.textContent = '⏸ PAUSE';
+  requestAnimationFrame(animLoop);
+}
+
+function onReset() {
+  playing = false;
+  animIdx = 0; animSimTime = 0; lastRaf = null;
+  document.getElementById('btn_fire').textContent = '▶ FIRE!';
+  document.getElementById('prog').style.width = '0%';
+  runSim();
+  drawAnim(animCanvas, traj, 0);
+  updateStats(0);
+}
+
+// Hop-up toggle label
+document.getElementById('hop_active').addEventListener('change', function() {
+  document.getElementById('hop_lbl').textContent = this.checked ? 'ON' : 'OFF';
+});
+
+document.getElementById('btn_fire').addEventListener('click', onFire);
+document.getElementById('btn_rst').addEventListener('click',  onReset);
+document.addEventListener('keydown', e => {
+  if(e.code==='Space'&&e.target.tagName!=='INPUT'){e.preventDefault();onFire();}
+  if(e.code==='KeyR'&&e.target.tagName!=='INPUT') onReset();
+});
+
+// Initial render
+runSim();
+drawAnim(animCanvas, traj, -1);
+</script>
+</body>
+</html>
